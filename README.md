@@ -21,7 +21,7 @@ The sources are checked automatically approximately once an hour. Users can also
 - PostgreSQL;
 - Telegram.Bot;
 - AngleSharp;
-- Microsoft Playwright for loading Work.ua pages.
+- Microsoft Playwright.
 
 ## Requirements
 
