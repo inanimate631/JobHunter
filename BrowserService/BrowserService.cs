@@ -23,7 +23,7 @@ public class BrowserService : IAsyncDisposable
     var browser = await playwright.Chromium.LaunchAsync(
         new BrowserTypeLaunchOptions
         {
-          Headless = false
+          Headless = true
         });
 
     return new BrowserService(playwright, browser);

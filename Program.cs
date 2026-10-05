@@ -4,7 +4,6 @@ using VacancyApi.Interfaces;
 using VacancyApi.Models;
 using VacancyApi.Services;
 using Telegram.Bot;
-using VacancyApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,6 +61,25 @@ builder.Services.AddCors(options =>
 
 
 var app = builder.Build();
+
+// Apply checked-in EF Core migrations when the container starts. The retry is
+// useful when PostgreSQL is still accepting connections during a restart.
+const int migrationAttempts = 10;
+for (var attempt = 1; attempt <= migrationAttempts; attempt++)
+{
+    try
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VacancyDbContext>();
+        await db.Database.MigrateAsync();
+        break;
+    }
+    catch (Exception) when (attempt < migrationAttempts)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(3));
+    }
+}
+
 app.UseCors("AngularPolicy");
 
 // Configure the HTTP request pipeline.

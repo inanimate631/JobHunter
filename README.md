@@ -25,10 +25,123 @@ The sources are checked automatically approximately once an hour. Users can also
 
 ## Requirements
 
-- .NET SDK 10;
-- PostgreSQL;
+- Docker Engine 24+ and Docker Compose v2 (for server deployment);
 - a Telegram bot and its token from [@BotFather](https://t.me/BotFather);
-- Chromium for Playwright.
+- a server with at least 2 GB RAM and enough disk space for PostgreSQL data.
+
+The Docker image already contains Chromium for Playwright. The application
+listens on port `8080` inside the container, and Compose starts PostgreSQL with
+a persistent volume. Checked-in EF Core migrations are applied automatically
+when the application starts.
+
+## Deployment with Docker Compose
+
+Copy the repository to the server, then run these commands from the project
+directory:
+
+```bash
+cp .env.example .env
+nano .env
+docker compose up -d --build
+docker compose ps
+docker compose logs -f app
+```
+
+Set a long random value for `POSTGRES_PASSWORD` and paste the Telegram token
+into `TELEGRAM_BOT_TOKEN`. Do not commit `.env` to Git. The application port
+is bound to `127.0.0.1`, so it is not available directly from the internet.
+The Telegram bot does not need an incoming port. The optional HTTP API can be
+reached locally on the server at `http://127.0.0.1:8080`.
+
+For a public production API, put Nginx or Caddy in front of the container,
+terminate HTTPS there, and expose only ports 80/443 publicly. Keep PostgreSQL
+unpublished; it is reachable by the application only through the internal
+Compose network. Telegram polling does not require opening an inbound Telegram
+webhook port.
+
+Useful maintenance commands:
+
+```bash
+docker compose logs -f app
+docker compose restart app
+docker compose pull db && docker compose up -d
+docker compose down                 # stops containers, keeps database volume
+docker compose down -v              # also deletes the database volume
+```
+
+Back up PostgreSQL before server migration or volume removal:
+
+```bash
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > jobhunter.sql
+```
+
+The command that removes stored database data is `docker compose down -v`; use
+it only when you intentionally want to delete the PostgreSQL volume.
+
+## Automatic deployment from GitHub
+
+The repository contains `.github/workflows/deploy.yml`. It deploys every push
+to the `main` branch and can also be started manually from the GitHub Actions
+page. The workflow logs into the server over SSH, pulls the commit, rebuilds
+the Docker image, and restarts the application. The existing Nginx
+configuration is not changed.
+
+Complete the one-time server setup first:
+
+```bash
+sudo apt update
+sudo apt install -y git
+sudo mkdir -p /opt
+sudo chown "$USER:$USER" /opt
+cd /opt
+git clone git@github.com:OWNER/REPOSITORY.git JobHunter
+cd JobHunter
+cp .env.example .env
+chmod 600 .env
+nano .env
+docker compose up -d --build
+```
+
+The server user must be able to run Docker without `sudo`:
+
+```bash
+sudo usermod -aG docker "$USER"
+```
+
+Log out and back in after running that command. Then create a separate SSH key
+on your computer for GitHub Actions:
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-jobhunter" -f jobhunter_deploy
+```
+
+Append `jobhunter_deploy.pub` to the server user's
+`~/.ssh/authorized_keys`. Add these repository secrets in GitHub under
+`Settings → Secrets and variables → Actions`:
+
+```text
+SERVER_HOST          server IP or hostname
+SERVER_USER          Linux user used for deployment
+SERVER_PATH          /opt/JobHunter
+SSH_PRIVATE_KEY      contents of jobhunter_deploy
+SERVER_KNOWN_HOSTS   output of ssh-keyscan -H SERVER_HOST
+```
+
+If the repository is private, the server also needs a read-only GitHub Deploy
+Key so that `git pull` can access the repository. Do not put `.env`, Telegram
+tokens, database passwords, or private SSH keys into Git.
+
+After this, a normal deployment is simply:
+
+```bash
+git add .
+git commit -m "Update bot"
+git push origin main
+```
+
+GitHub Actions will perform the server update automatically. The workflow uses
+the `main` branch; change both `main` references in the workflow if the main
+branch in the repository is named differently.
 
 ## Configuration
 
